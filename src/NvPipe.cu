@@ -54,8 +54,6 @@
 #include <cuda_d3d11_interop.h>
 #endif
 
-extern "C" {
-
 class Exception
 {
 public:
@@ -1301,18 +1299,3 @@ NVPIPE_EXPORT uint64_t NvPipe_EncodeTextureD3D11(NvPipe* nvp, ID3D11Texture2D* t
 }
 
 #endif
-
-} // extern "C"
-
-
-
-
-
-
-
-
-
-
-
-
-
