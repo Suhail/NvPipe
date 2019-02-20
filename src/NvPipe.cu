@@ -50,6 +50,11 @@
 #include <cuda_gl_interop.h>
 #endif
 
+#ifdef NVPIPE_WITH_D3D11
+#include <cuda_d3d11_interop.h>
+#endif
+
+extern "C" {
 
 class Exception
 {
@@ -287,10 +292,10 @@ void nv12_to_uint32(const uint8_t* src, uint32_t srcPitch, uint8_t* dst, uint32_
 /**
  * @brief Utility class for managing CUDA-GL interop graphics resources.
  */
-class GraphicsResourceRegistry
+class GraphicsResourceRegistryGL
 {
 public:
-    virtual ~GraphicsResourceRegistry()
+    virtual ~GraphicsResourceRegistryGL()
     {
         // Unregister all
         for (auto& r : this->registeredPBOs)
@@ -369,6 +374,79 @@ private:
 };
 #endif
 
+#ifdef NVPIPE_WITH_D3D11
+class GraphicsResourceRegistryD3D11
+{
+public:
+    virtual ~GraphicsResourceRegistryD3D11()
+    {
+        // TODO: Is this needed?
+        cudaThreadSynchronize();
+
+        // Unregister all
+        for (auto& r : this->registeredTextures)
+        {
+            if (r.second.graphicsResource)
+            {
+                CUDA_THROW(cudaGraphicsUnregisterResource(r.second.graphicsResource),
+                           "Failed to unregister D3D11 texture graphics resource");
+
+                r.first->Release();
+            }
+        }
+    }
+
+    cudaGraphicsResource_t getTextureGraphicsTextureD3D11(ID3D11Texture2D* texture, uint32_t width, uint32_t height, uint32_t flags)
+    {
+        // Check if D3D11 texture needs to be (re)registered
+        RegisteredResource& reg = this->registeredTextures[texture];
+
+        if (reg.width != width || reg.height != height) 
+        {
+            if (reg.graphicsResource) 
+            {
+                CUDA_THROW(cudaGraphicsUnregisterResource(reg.graphicsResource),
+                           "Failed to unregister D3D11 graphics resource");
+
+                reg.graphicsResource = nullptr;
+
+                texture->Release();
+            }
+
+            CUDA_THROW(cudaGraphicsD3D11RegisterResource(&reg.graphicsResource, texture, flags),
+                       "Failed to register D3D11 texture as graphics resource");
+
+            texture->AddRef();
+
+            reg.width = width;
+            reg.height = height;
+        }
+
+        return reg.graphicsResource;
+    }
+private:
+    struct RegisteredResource
+    {
+        cudaGraphicsResource_t graphicsResource = nullptr;
+        uint32_t width = 0;
+        uint32_t height = 0;
+    };
+    std::unordered_map<ID3D11Texture2D*, RegisteredResource> registeredTextures;
+};
+#endif
+
+class GraphicsResourceRegistryBase {};
+
+class GraphicsResourceRegistry 
+: public GraphicsResourceRegistryBase
+#ifdef NVPIPE_WITH_OPENGL
+, public GraphicsResourceRegistryGL
+#endif
+#ifdef NVPIPE_WITH_D3D11
+, public GraphicsResourceRegistryD3D11
+#endif
+{
+};
 
 #ifdef NVPIPE_WITH_ENCODER
 /**
@@ -547,6 +625,44 @@ public:
 
 #endif
 
+#ifdef NVPIPE_WITH_D3D11
+
+    uint64_t encodeTextureD3D11(ID3D11Texture2D* texture, uint8_t* dst, uint64_t dstSize, bool forceIFrame)
+    {
+        if (this->format != NVPIPE_BGRA32)
+            throw Exception("The D3D11 interface only supports the BGRA32 format");
+
+        D3D11_TEXTURE2D_DESC desc;
+        texture->GetDesc(&desc);
+
+        uint32_t width = desc.Width;
+        uint32_t height = desc.Height;
+
+        // Recreate encoder if size changed
+        this->recreate(width, height);
+
+        // Map texture and copy input to encoder
+        cudaGraphicsResource_t resource = this->registry.getTextureGraphicsTextureD3D11(texture, width, height, cudaGraphicsRegisterFlagsNone);
+        CUDA_THROW(cudaGraphicsMapResources(1, &resource),
+                   "Failed to map texture graphics resource");
+        cudaArray_t array;
+        CUDA_THROW(cudaGraphicsSubResourceGetMappedArray(&array, resource, 0, 0),
+                   "Failed get texture graphics resource array");
+
+        const NvEncInputFrame* f = this->encoder->GetNextInputFrame();
+        CUDA_THROW(cudaMemcpy2DFromArray(f->inputPtr, f->pitch, array, 0, 0, width * 4, height, cudaMemcpyDeviceToDevice),
+                   "Failed to copy from texture array");
+
+        // Encode
+        uint64_t size = this->encode(dst, dstSize, forceIFrame);
+
+        // Unmap texture
+        CUDA_THROW(cudaGraphicsUnmapResources(1, &resource),
+                   "Failed to unmap texture graphics resource");
+
+        return size;
+    }
+#endif
 private:
     void recreate(uint32_t width, uint32_t height)
     {
@@ -683,9 +799,7 @@ private:
     void* deviceBuffer = nullptr;
     uint64_t deviceBufferSize = 0;
 
-#ifdef NVPIPE_WITH_OPENGL
     GraphicsResourceRegistry registry;
-#endif
 };
 #endif
 
@@ -1164,7 +1278,31 @@ NVPIPE_EXPORT const char* NvPipe_GetError(NvPipe* nvp)
     return instance->error.c_str();
 }
 
+#ifdef NVPIPE_WITH_D3D11
 
+NVPIPE_EXPORT uint64_t NvPipe_EncodeTextureD3D11(NvPipe* nvp, ID3D11Texture2D* texture, uint8_t* dst, uint64_t dstSize, bool forceIFrame)
+{
+    Instance* instance = static_cast<Instance*>(nvp);
+    if (!instance->encoder)
+    {
+        instance->error = "Invalid NvPipe encoder.";
+        return 0;
+    }
+
+    try
+    {
+        return instance->encoder->encodeTextureD3D11(texture, dst, dstSize, forceIFrame);
+    }
+    catch (Exception& e)
+    {
+        instance->error = e.getErrorString();
+        return 0;
+    }
+}
+
+#endif
+
+} // extern "C"
 
 
 

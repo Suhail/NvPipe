@@ -34,6 +34,7 @@
 #cmakedefine NVPIPE_WITH_ENCODER
 #cmakedefine NVPIPE_WITH_DECODER
 #cmakedefine NVPIPE_WITH_OPENGL
+#cmakedefine NVPIPE_WITH_D3D11
 
 #ifdef _WIN32
 #	define NVPIPE_EXPORT __declspec(dllexport)
@@ -146,6 +147,21 @@ NVPIPE_EXPORT uint64_t NvPipe_EncodeTexture(NvPipe* nvp, uint32_t texture, uint3
 NVPIPE_EXPORT uint64_t NvPipe_EncodePBO(NvPipe* nvp, uint32_t pbo, uint8_t* dst, uint64_t dstSize, uint32_t width, uint32_t height, bool forceIFrame);
 
 #endif
+
+#endif
+
+#ifdef NVPIPE_WITH_D3D11
+
+/**
+ * @brief Encodes a single frame from an Direct3D 11 texture.
+ * @param nvp Encoder instance.
+ * @param texture ID3D11Texture2D pointer.
+ * @param dst Host memory pointer for compressed output.
+ * @param dstSize Available space for compressed output. Will be overridden by effective compressed output size.
+  * @param forceIFrame Enforces an I-frame instead of a P-frame.
+ * @return Size of encoded data in bytes or 0 on error.
+ */
+NVPIPE_EXPORT uint64_t NvPipe_EncodeTextureD3D11(NvPipe* nvp, struct ID3D11Texture2D* texture, uint8_t* dst, uint64_t dstSize, bool forceIFrame);
 
 #endif
 
