@@ -87,6 +87,9 @@ NvPipe_Destroy(decoder);
 
 Installation
 ============
+
+### Installation on Linux
+
 NvPipe requires a C++ compiler and uses the standard CMake compilation and installation procedure.
 ```bash
 mkdir build && cd build
@@ -102,6 +105,46 @@ The OpenGL interface is optional and can be disabled using the `NVPIPE_WITH_OPEN
 The compilation of the included sample applications can be controlled via the `NVPIPE_BUILD_EXAMPLES` CMake option (default: `ON`).
 
 Only shared libraries are supported.
+
+### Installing on Windows 10 (x64)
+
+1. Create a CMakeSettings.json file:
+```json
+{
+  "configurations": [
+    {
+      "name": "x64-Release",
+      "generator": "Ninja",
+      "configurationType": "Release",
+      "inheritEnvironments": [
+        "msvc_x64_x64"
+      ],
+      "buildRoot": "C:\\.build\\NvPipe\\${name}",
+      "installRoot": "C:\\.install\\NvPipe\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "-v",
+      "ctestCommandArgs": "",
+      "variables": [
+        {
+          "name": "GLEW_INCLUDE_DIR",
+          "value": "PATH_TO_GLEW\\vcpkg\\packages\\glew_x64-windows\\include"
+        },
+        {
+          "name": "GLEW_LIBRARY_RELEASE",
+          "value": "PATH_TO_GLEW_LIB\\vcpkg\\packages\\glew_x64-windows\\lib"
+        }
+      ]
+    }
+  ]
+}
+```
+
+2. Save `CMakeSettings.json` where `CMakeLists.txt` exists
+3. You can install GLEW via vcpkg: `.\vcpkg.exe install glew:x64-windows`
+4. Open up in Visual Studio 2017 with CMake...
+5. Select Startup Item... in the toolbar above
+6. F7 to build
+7. .lib & .dll files will existing in buildRoot from `CMakeSettings.json`
 
 Examples
 =====
