@@ -106,7 +106,7 @@ The compilation of the included sample applications can be controlled via the `N
 
 Only shared libraries are supported.
 
-### Installing on Windows 10 (x64)
+### Installation on Windows 10 (x64)
 
 1. Create a CMakeSettings.json file:
 ```json
@@ -144,7 +144,7 @@ Only shared libraries are supported.
 4. Open up in Visual Studio 2017 with CMake...
 5. Select Startup Item... in the toolbar above
 6. F7 to build
-7. .lib & .dll files will existing in buildRoot from `CMakeSettings.json`
+7. .lib & .dll files will exist in buildRoot from `CMakeSettings.json`
 
 Examples
 =====
