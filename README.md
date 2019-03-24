@@ -119,8 +119,8 @@ Only shared libraries are supported.
       "inheritEnvironments": [
         "msvc_x64_x64"
       ],
-      "buildRoot": "C:\\.build\\NvPipe\\${name}",
-      "installRoot": "C:\\.install\\NvPipe\\${name}",
+      "buildRoot": "${workspaceRoot}\\build\\NvPipe\\${name}",
+      "installRoot": "${workspaceRoot}\\install\\NvPipe\\${name}",
       "cmakeCommandArgs": "",
       "buildCommandArgs": "-v",
       "ctestCommandArgs": "",
