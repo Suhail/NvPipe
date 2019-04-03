@@ -667,7 +667,7 @@ public:
 
     uint64_t encodeTextureD3D11(ID3D11Texture2D* texture, uint8_t* dst, uint64_t dstSize, bool forceIFrame)
     {
-        if (this->format != NVPIPE_BGRA32)
+        if (this->format != NVPIPE_RGBA32)
             throw Exception("The D3D11 interface only supports the BGRA32 format");
 
         D3D11_TEXTURE2D_DESC desc;
