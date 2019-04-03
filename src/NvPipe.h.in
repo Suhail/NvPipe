@@ -70,7 +70,7 @@ typedef enum {
  * Format of the input frame.
  */
 typedef enum {
-    NVPIPE_BGRA32,
+    NVPIPE_RGBA32,
     NVPIPE_UINT4,
     NVPIPE_UINT8,
     NVPIPE_UINT16,
@@ -87,9 +87,11 @@ typedef enum {
  * @param compression Lossy or lossless compression.
  * @param bitrate Bitrate in bit per second, e.g., 32 * 1000 * 1000 = 32 Mbps (for lossy compression only).
  * @param targetFrameRate At this frame rate the effective data rate approximately equals the bitrate (for lossy compression only).
+ * @param width Initial width of the encoder.
+ * @param height Initial height of the encoder.
  * @return NULL on error.
  */
-NVPIPE_EXPORT NvPipe* NvPipe_CreateEncoder(NvPipe_Format format, NvPipe_Codec codec, NvPipe_Compression compression, uint64_t bitrate, uint32_t targetFrameRate);
+NVPIPE_EXPORT NvPipe* NvPipe_CreateEncoder(NvPipe_Format format, NvPipe_Codec codec, NvPipe_Compression compression, uint64_t bitrate, uint32_t targetFrameRate, uint32_t width, uint32_t height);
 
 
 /**
@@ -171,9 +173,11 @@ NVPIPE_EXPORT uint64_t NvPipe_EncodeTextureD3D11(NvPipe* nvp, struct ID3D11Textu
  * @brief Creates a new decoder instance.
  * @param format Format of output frame.
  * @param codec Possible codecs are H.264 and HEVC if available.
+ * @param width Initial width of the decoder.
+ * @param height Initial height of the decoder.
  * @return NULL on error.
  */
-NVPIPE_EXPORT NvPipe* NvPipe_CreateDecoder(NvPipe_Format format, NvPipe_Codec codec);
+NVPIPE_EXPORT NvPipe* NvPipe_CreateDecoder(NvPipe_Format format, NvPipe_Codec codec, uint32_t width, uint32_t height);
 
 
 /**

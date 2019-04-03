@@ -7,7 +7,7 @@ networked interactive server/client application.
 
 Designed for both remote rendering solutions and general compression of arbitrary image data, NvPipe accepts frames in various formats and supports access to host memory, CUDA device memory, OpenGL textures and OpenGL pixel buffer objects. 
 
-Supported formats are 32 bit BGRA frames (8 bit per channel; alpha is not supported by the underlying video codecs and is ignored) and unsigned integer grayscale frames with 4 bit, 8 bit, 16 bit or 32 bit per pixel.
+Supported formats are 32 bit RGBA frames (8 bit per channel; alpha is not supported by the underlying video codecs and is ignored) and unsigned integer grayscale frames with 4 bit, 8 bit, 16 bit or 32 bit per pixel.
 
 Besides conventional lossy video compression based on target bitrate and framerate, also fully lossless compression is available enabling exact bit pattern reconstruction.
 
@@ -30,16 +30,16 @@ A sample encoding scenario:
 ...
 
 uint32_t width = ..., height = ...; // Image resolution
-uint8_t* bgra = ...; // Image data in device or host memory
+uint8_t* rgba = ...; // Image data in device or host memory
 uint8_t* buffer = ...; // Buffer for compressed output in host memory    
    
 // Create encoder
-NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_BGRA32, NVPIPE_H264, NVPIPE_LOSSY, 32 * 1000 * 1000, 90); // 32 Mbps @ 90 Hz
+NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_RGBA32, NVPIPE_H264, NVPIPE_LOSSY, 32 * 1000 * 1000, 90, width, height); // 32 Mbps @ 90 Hz
 
 while (frameAvailable) 
 {
     // Encode next frame
-    uint64_t compressedSize = NvPipe_Encode(encoder, bgra, width * 4, buffer, bufferSize, width, height, false);
+    uint64_t compressedSize = NvPipe_Encode(encoder, rgba, width * 4, buffer, bufferSize, width, height, false);
     
     // Send the frame size and compressed stream to the consuming side
     send(socket, &compressedSize, sizeof(uint64_t), ...);
@@ -58,11 +58,11 @@ The corresponding decoding scenario:
 ...
 
 uint32_t width = ..., height = ...; // Image resolution
-uint8_t* bgra = ...; // Image destination in device or host memory
+uint8_t* rgba = ...; // Image destination in device or host memory
 uint8_t* buffer = ...; // Buffer for incoming packets  
 
 // Create decoder
-NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_BGRA32, NVPIPE_H264);
+NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_RGBA32, NVPIPE_H264, width, height);
 
 while (frameAvailable) 
 {
@@ -73,7 +73,7 @@ while (frameAvailable)
     receive(socket, ...);
     
     // Decode frame
-    NvPipe_Decode(decoder, buffer, compressedSize, bgra, width, height);
+    NvPipe_Decode(decoder, buffer, compressedSize, rgba, width, height);
     
     // Use frame (blit/save/...)
     ...
@@ -102,6 +102,44 @@ The OpenGL interface is optional and can be disabled using the `NVPIPE_WITH_OPEN
 The compilation of the included sample applications can be controlled via the `NVPIPE_BUILD_EXAMPLES` CMake option (default: `ON`).
 
 Only shared libraries are supported.
+
+
+##### Compiling on Windows using Visual Studio 2017 #####
+
+On Windows, NvPipe can be compiled using Visual Studio's built-in CMake support.
+
+Just place a `CMakeSettings.json` file with the following contents (adjust paths accordingly) next to NvPipe's `CMakeLists.txt`:
+
+```
+{
+  "configurations": [
+    {
+      "name": "x64-Release",
+      "generator": "Ninja",
+      "configurationType": "Release",
+      "inheritEnvironments": [
+        "msvc_x64_x64"
+      ],
+      "buildRoot": "C:\\.build\\NvPipe\\${name}",
+      "installRoot": "C:\\.install\\NvPipe\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "-v",
+      "ctestCommandArgs": "",
+      "variables": [
+        {
+          "name": "GLEW_INCLUDE_DIR",
+          "value": "C:\\PATH\\TO\\glew-2.1.0\\include"
+        },
+        {
+          "name": "GLEW_LIBRARY_RELEASE",
+          "value": "C:\\PATH\\TO\\glew-2.1.0\\lib\\Release\\x64\\glew32.lib"
+        }
+      ]
+    }
+  ]
+}
+```
+
 
 Examples
 =====
@@ -198,6 +236,7 @@ Supported Platforms
 NvPipe is supported on both Linux and Windows. OS X support is not plausible in the short term.  
 
 Please refer to the hardware capability matrices of the [NVIDIA Video Codec SDK](https://developer.nvidia.com/nvidia-video-codec-sdk) for more details on feature availability and driver requirements.
+
 Note that NvPipe does not support the Jetson platform, on which the video hardware should be accessed through the [NvMedia API](https://docs.nvidia.com/drive/nvvib_docs/NVIDIA%20DRIVE%20Linux%20SDK%20Development%20Guide/baggage/group__nvmedia__top.html).
 
 
@@ -212,8 +251,8 @@ NvPipe was successfully used in the EGPGV 2018 best paper *Hardware-Accelerated 
 Feedback
 ===================
 
-Feedback and pull requests welcome! 
+Feedback and pull requests welcome! After starting a PR, remember to sign the CLA.
 
 We would love to hear more about your use cases of NvPipe!
 If you have any questions, feature requests, issues, or ideas for improvement, please feel free to reach out at [tbiedert@nvidia.com](mailto:tbiedert@nvidia.com).
-
+The more I know about your use cases of NvPipe, the better I can justify spending time on your project!

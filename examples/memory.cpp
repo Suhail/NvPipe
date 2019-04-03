@@ -58,7 +58,7 @@ int main(int argc, char* argv[])
     std::vector<uint8_t> rgba(width * height * 4);
     for (uint32_t y = 0; y < height; ++y)
         for (uint32_t x = 0; x < width; ++x)
-            rgba[4 * (y * width + x) + 1] = (255.0f * x * y) / (width * height) * (y % 100 < 50);
+            rgba[4 * (y * width + x) + 0] = (255.0f * x * y) / (width * height) * (y % 100 < 50);
 
     savePPM(rgba.data(), width, height, "memory-input.ppm");
 
@@ -77,12 +77,12 @@ int main(int argc, char* argv[])
         std::cout << "Frame | Encode (ms) | Decode (ms) | Size (KB)" << std::endl;
 
         // Create encoder
-        NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_BGRA32, codec, compression, bitrateMbps * 1000 * 1000, targetFPS);
+        NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_RGBA32, codec, compression, bitrateMbps * 1000 * 1000, targetFPS, width, height);
         if (!encoder)
             std::cerr << "Failed to create encoder: " << NvPipe_GetError(NULL) << std::endl;
 
         // Create decoder
-        NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_BGRA32, codec);
+        NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_RGBA32, codec, width, height);
         if (!decoder)
             std::cerr << "Failed to create decoder: " << NvPipe_GetError(NULL) << std::endl;
 
@@ -123,12 +123,12 @@ int main(int argc, char* argv[])
         std::cout << "Frame | Encode (ms) | Decode (ms) | Size (KB)" << std::endl;
 
         // Create encoder
-        NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_BGRA32, codec, compression, bitrateMbps * 1000 * 1000, targetFPS);
+        NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_RGBA32, codec, compression, bitrateMbps * 1000 * 1000, targetFPS, width, height);
         if (!encoder)
             std::cerr << "Failed to create encoder: " << NvPipe_GetError(NULL) << std::endl;
 
         // Create decoder
-        NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_BGRA32, codec);
+        NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_RGBA32, codec, width, height);
         if (!decoder)
             std::cerr << "Failed to create decoder: " << NvPipe_GetError(NULL) << std::endl;
 
@@ -155,7 +155,7 @@ int main(int argc, char* argv[])
             uint64_t r = NvPipe_Decode(decoder, compressed.data(), size, decompressedDevice, width, height);
             double decodeMs = timer.getElapsedMilliseconds();
 
-            if (r == size)
+            if (0 == r)
                 std::cerr << "Decode error: " << NvPipe_GetError(decoder) << std::endl;
 
             double sizeKB = size / 1000.0;

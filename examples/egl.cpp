@@ -183,12 +183,12 @@ int main(int argc, char* argv[])
 
 
     // Create encoder
-    NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_BGRA32, codec, NVPIPE_LOSSY, bitrateMbps * 1000 * 1000, targetFPS);
+    NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_RGBA32, codec, NVPIPE_LOSSY, bitrateMbps * 1000 * 1000, targetFPS, width, height);
     if (!encoder)
         std::cerr << "Failed to create encoder: " << NvPipe_GetError(NULL) << std::endl;
 
     // Create decoder
-    NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_BGRA32, codec);
+    NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_RGBA32, codec, width, height);
     if (!decoder)
         std::cerr << "Failed to create decoder: " << NvPipe_GetError(NULL) << std::endl;
 

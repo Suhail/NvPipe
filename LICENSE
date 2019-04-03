@@ -26,5 +26,4 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 -----
 
-The reusable NvCodec classes from Video Codec SDK 8.1 are a special exception.
-The corresponding license agreement can be found in src/NvCodec.
+The Video Codec SDK has its own license agreement that can be found in src/Video_Codec_SDK.

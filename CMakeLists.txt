@@ -46,7 +46,6 @@ find_library(CUDA_LIB NAMES cuda HINTS ${CUDA_LIB_DIR})
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 11)
-list(APPEND CUDA_NVCC_FLAGS "-std=c++11")
 
 # Options
 option(NVPIPE_WITH_ENCODER "Enables the NvPipe encoding interface." ON)
@@ -62,7 +61,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
 # NvPipe shared library
 list(APPEND NVPIPE_SOURCES
     src/NvPipe.cu
-    src/NvCodec/Utils/ColorSpace.cu
+    src/Video_Codec_SDK_9.0.20/Samples/Utils/ColorSpace.cu
     )
 list(APPEND NVPIPE_LIBRARIES
     ${CMAKE_DL_LIBS}
@@ -72,14 +71,14 @@ list(APPEND NVPIPE_LIBRARIES
 
 if (NVPIPE_WITH_ENCODER)
     list(APPEND NVPIPE_SOURCES
-        src/NvCodec/NvEncoder/NvEncoder.cpp
-        src/NvCodec/NvEncoder/NvEncoderCuda.cpp
+        src/Video_Codec_SDK_9.0.20/Samples/NvCodec/NvEncoder/NvEncoder.cpp
+        src/Video_Codec_SDK_9.0.20/Samples/NvCodec/NvEncoder/NvEncoderCuda.cpp
         )
 endif()
 
 if (NVPIPE_WITH_DECODER)    
     list(APPEND NVPIPE_SOURCES
-        src/NvCodec/NvDecoder/NvDecoder.cpp
+        src/Video_Codec_SDK_9.0.20/Samples/NvCodec/NvDecoder/NvDecoder.cpp
         )
     list(APPEND NVPIPE_LIBRARIES
         nvcuvid
@@ -87,9 +86,9 @@ if (NVPIPE_WITH_DECODER)
 
     if (WIN32)
         if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-            link_directories(src/NvCodec/Lib/x64)
+            link_directories(src/Video_Codec_SDK_9.0.20/Lib/x64)
         elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
-            link_directories(src/NvCodec/Lib/Win32)
+            link_directories(src/Video_Codec_SDK_9.0.20/Lib/Win32)
         endif()    
     endif()
 endif()
@@ -102,7 +101,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     $<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include>
     )
 target_include_directories(${PROJECT_NAME} PRIVATE
-    $<BUILD_INTERFACE:src/NvCodec ${CUDA_INCLUDE_DIRS}>
+    $<BUILD_INTERFACE:src/Video_Codec_SDK_9.0.20/Samples src/Video_Codec_SDK_9.0.20/Samples/NvCodec src/Video_Codec_SDK_9.0.20/include ${CUDA_INCLUDE_DIRS}>
     )
 target_link_libraries(${PROJECT_NAME} ${NVPIPE_LIBRARIES})
 
@@ -130,6 +129,10 @@ if (NVPIPE_BUILD_EXAMPLES)
         # Host/device memory comparison
         add_executable(nvpExampleMemory examples/memory.cpp)
         target_link_libraries(nvpExampleMemory PRIVATE ${PROJECT_NAME})
+
+        # Concurrent test
+        add_executable(nvpExampleConcurrent examples/concurrent.cpp)
+        target_link_libraries(nvpExampleConcurrent PRIVATE ${PROJECT_NAME})
 
         # Lossless test
         add_executable(nvpExampleLossless examples/lossless.cpp)

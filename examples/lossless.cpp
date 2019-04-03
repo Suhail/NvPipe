@@ -60,7 +60,7 @@ void test(const uint8_t* data, NvPipe_Format format, uint32_t width, uint32_t he
     Timer timer;
 
     // Encode
-    NvPipe* encoder = NvPipe_CreateEncoder(format, NVPIPE_H264, NVPIPE_LOSSLESS, 0, 0);
+    NvPipe* encoder = NvPipe_CreateEncoder(format, NVPIPE_H264, NVPIPE_LOSSLESS, 0, 0, width, height);
     if (!encoder)
     {
         std::cerr << "Failed to create encoder: " << NvPipe_GetError(NULL) << std::endl;
@@ -80,7 +80,7 @@ void test(const uint8_t* data, NvPipe_Format format, uint32_t width, uint32_t he
     NvPipe_Destroy(encoder);
 
     // Decode
-    NvPipe* decoder = NvPipe_CreateDecoder(format, NVPIPE_H264);
+    NvPipe* decoder = NvPipe_CreateDecoder(format, NVPIPE_H264, width, height);
     if (!decoder)
     {
         std::cerr << "Failed to create decoder: " << NvPipe_GetError(NULL) << std::endl;

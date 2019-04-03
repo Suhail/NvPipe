@@ -67,7 +67,7 @@ int main(int argc, char* argv[])
     savePPM(rgba.data(), width, height, "file-input.ppm");
 
 
-    NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_BGRA32, codec, NVPIPE_LOSSY, bitrateMbps * 1000 * 1000, targetFPS);
+    NvPipe* encoder = NvPipe_CreateEncoder(NVPIPE_RGBA32, codec, NVPIPE_LOSSY, bitrateMbps * 1000 * 1000, targetFPS, width, height);
     if (!encoder)
         std::cerr << "Failed to create encoder: " << NvPipe_GetError(NULL) << std::endl;
 
@@ -98,7 +98,7 @@ int main(int argc, char* argv[])
 
     // Decoding
 #ifdef NVPIPE_WITH_DECODER
-    NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_BGRA32, codec);
+    NvPipe* decoder = NvPipe_CreateDecoder(NVPIPE_RGBA32, codec, width, height);
     if (!decoder)
         std::cerr << "Failed to create decoder: " << NvPipe_GetError(NULL) << std::endl;
 

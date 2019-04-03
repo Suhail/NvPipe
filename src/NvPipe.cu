@@ -35,13 +35,15 @@
 #include "NvCodec/NvDecoder/NvDecoder.h"
 #endif
 
-#include "NvCodec/Utils/NvCodecUtils.h"
+#include "Utils/ColorSpace.h"
+#include "Utils/NvCodecUtils.h"
 
 #include <memory>
 #include <iostream>
 #include <string>
 #include <sstream>
 #include <unordered_map>
+#include <mutex>
 
 #include <cuda.h>
 #include <cuda_runtime_api.h>
@@ -85,7 +87,7 @@ inline bool isDevicePointer(const void* ptr)
 
 inline uint64_t getFrameSize(NvPipe_Format format, uint32_t width, uint32_t height)
 {
-    if (format == NVPIPE_BGRA32)
+    if (format == NVPIPE_RGBA32)
         return width * height * 4;
     else if (format == NVPIPE_UINT4)
         return width * height / 2;
@@ -109,7 +111,7 @@ void uint4_to_nv12(const uint8_t* src, uint32_t srcPitch, uint8_t* dst, uint32_t
 
     if (x < width && y < height)
     {
-        const uint32_t i = y * srcPitch + x/2;
+        const uint32_t i = y * srcPitch + x / 2;
         const uint32_t j = y * dstPitch + x;
 
         // Extend 4 bit to 8 bits
@@ -141,7 +143,7 @@ void nv12_to_uint4(const uint8_t* src, uint32_t srcPitch, uint8_t* dst, uint32_t
         uint8_t v = (src[i] & 0xF) << 4;
 
         if (2 * x + 1 < width)
-            v = v | (src[i+1] & 0xF);
+            v = v | (src[i + 1] & 0xF);
 
         dst[j] = v;
     }
@@ -298,11 +300,11 @@ public:
         // Unregister all
         for (auto& r : this->registeredPBOs)
             CUDA_THROW(cudaGraphicsUnregisterResource(r.second.graphicsResource),
-                       "Failed to unregister PBO graphics resource");
+                "Failed to unregister PBO graphics resource");
 
         for (auto& r : this->registeredTextures)
             CUDA_THROW(cudaGraphicsUnregisterResource(r.second.graphicsResource),
-                       "Failed to unregister texture graphics resource");
+                "Failed to unregister texture graphics resource");
     }
 
     cudaGraphicsResource_t getTextureGraphicsResource(uint32_t texture, uint32_t target, uint32_t width, uint32_t height, uint32_t flags)
@@ -313,13 +315,13 @@ public:
         if (reg.width != width || reg.height != height || reg.target != target) {
             if (reg.graphicsResource) {
                 CUDA_THROW(cudaGraphicsUnregisterResource(reg.graphicsResource),
-                           "Failed to unregister texture graphics resource");
+                    "Failed to unregister texture graphics resource");
 
                 reg.graphicsResource = nullptr;
             }
 
             CUDA_THROW(cudaGraphicsGLRegisterImage(&reg.graphicsResource, texture, target, flags),
-                       "Failed to register texture as graphics resource");
+                "Failed to register texture as graphics resource");
 
             reg.width = width;
             reg.height = height;
@@ -337,13 +339,13 @@ public:
         if (reg.width != width || reg.height != height) {
             if (reg.graphicsResource) {
                 CUDA_THROW(cudaGraphicsUnregisterResource(reg.graphicsResource),
-                           "Failed to unregister PBO graphics resource");
+                    "Failed to unregister PBO graphics resource");
 
                 reg.graphicsResource = nullptr;
             }
 
             CUDA_THROW(cudaGraphicsGLRegisterBuffer(&reg.graphicsResource, pbo, flags),
-                       "Failed to register PBO as graphics resource");
+                "Failed to register PBO as graphics resource");
 
             reg.width = width;
             reg.height = height;
@@ -447,21 +449,59 @@ class GraphicsResourceRegistry
 };
 
 #ifdef NVPIPE_WITH_ENCODER
+
+inline std::string EncErrorCodeToString(NVENCSTATUS code)
+{
+    std::vector<std::string> errors = {
+        "NV_ENC_SUCCESS",
+        "NV_ENC_ERR_NO_ENCODE_DEVICE",
+        "NV_ENC_ERR_UNSUPPORTED_DEVICE",
+        "NV_ENC_ERR_INVALID_ENCODERDEVICE",
+        "NV_ENC_ERR_INVALID_DEVICE",
+        "NV_ENC_ERR_DEVICE_NOT_EXIST",
+        "NV_ENC_ERR_INVALID_PTR",
+        "NV_ENC_ERR_INVALID_EVENT",
+        "NV_ENC_ERR_INVALID_PARAM",
+        "NV_ENC_ERR_INVALID_CALL",
+        "NV_ENC_ERR_OUT_OF_MEMORY",
+        "NV_ENC_ERR_ENCODER_NOT_INITIALIZED",
+        "NV_ENC_ERR_UNSUPPORTED_PARAM",
+        "NV_ENC_ERR_LOCK_BUSY",
+        "NV_ENC_ERR_NOT_ENOUGH_BUFFER",
+        "NV_ENC_ERR_INVALID_VERSION",
+        "NV_ENC_ERR_MAP_FAILED",
+        "NV_ENC_ERR_NEED_MORE_INPUT",
+        "NV_ENC_ERR_ENCODER_BUSY",
+        "NV_ENC_ERR_EVENT_NOT_REGISTERD",
+        "NV_ENC_ERR_GENERIC",
+        "NV_ENC_ERR_INCOMPATIBLE_CLIENT_KEY",
+        "NV_ENC_ERR_UNIMPLEMENTED",
+        "NV_ENC_ERR_RESOURCE_REGISTER_FAILED",
+        "NV_ENC_ERR_RESOURCE_NOT_REGISTERED",
+        "NV_ENC_ERR_RESOURCE_NOT_MAPPED"
+    };
+
+    if (code >= 0 && code < errors.size())
+        return errors[code];
+
+    return "Unknown error code";
+}
+
 /**
  * @brief Encoder implementation.
  */
 class Encoder
 {
 public:
-    Encoder(NvPipe_Format format, NvPipe_Codec codec, NvPipe_Compression compression, uint64_t bitrate, uint32_t targetFrameRate)
-    {
+    Encoder(NvPipe_Format format, NvPipe_Codec codec, NvPipe_Compression compression, uint64_t bitrate, uint32_t targetFrameRate, uint32_t width, uint32_t height)
+    {        
         this->format = format;
         this->codec = codec;
         this->compression = compression;
         this->bitrate = bitrate;
         this->targetFrameRate = targetFrameRate;
 
-        this->recreate(1920, 1080);
+        this->recreate(width, height);
     }
 
     ~Encoder()
@@ -506,11 +546,11 @@ public:
             this->recreate(width, height);
 
         // RGBA can be directly copied from host or device
-        if (this->format == NVPIPE_BGRA32)
+        if (this->format == NVPIPE_RGBA32)
         {
             const NvEncInputFrame* f = this->encoder->GetNextInputFrame();
             CUDA_THROW(cudaMemcpy2D(f->inputPtr, f->pitch, src, srcPitch, width * 4, height, isDevicePointer(src) ? cudaMemcpyDeviceToDevice : cudaMemcpyHostToDevice),
-                       "Failed to copy input frame");
+                "Failed to copy input frame");
         }
         // Other formats need to be copied to the device and converted
         else
@@ -521,7 +561,7 @@ public:
             {
                 this->recreateDeviceBuffer(width, height);
                 CUDA_THROW(cudaMemcpy(this->deviceBuffer, src, getFrameSize(this->format, width, height), cudaMemcpyHostToDevice),
-                           "Failed to copy input frame");
+                    "Failed to copy input frame");
             }
 
             // Convert
@@ -533,7 +573,7 @@ public:
                 dim3 gridSize(width / 16 + 1, height / 2 + 1);
                 dim3 blockSize(16, 2);
 
-                uint4_to_nv12<<<gridSize, blockSize>>>((uint8_t*) (copyToDevice ? this->deviceBuffer : src), srcPitch, (uint8_t*) f->inputPtr, f->pitch, width, height);
+                uint4_to_nv12 << <gridSize, blockSize >> > ((uint8_t*)(copyToDevice ? this->deviceBuffer : src), srcPitch, (uint8_t*)f->inputPtr, f->pitch, width, height);
             }
             else if (this->format == NVPIPE_UINT8)
             {
@@ -541,7 +581,7 @@ public:
                 dim3 gridSize(width / 16 + 1, height / 2 + 1);
                 dim3 blockSize(16, 2);
 
-                uint8_to_nv12<<<gridSize, blockSize>>>((uint8_t*) (copyToDevice ? this->deviceBuffer : src), srcPitch, (uint8_t*) f->inputPtr, f->pitch, width, height);
+                uint8_to_nv12 << <gridSize, blockSize >> > ((uint8_t*)(copyToDevice ? this->deviceBuffer : src), srcPitch, (uint8_t*)f->inputPtr, f->pitch, width, height);
             }
             else if (this->format == NVPIPE_UINT16)
             {
@@ -549,7 +589,7 @@ public:
                 dim3 gridSize(width / 16 + 1, height / 2 + 1);
                 dim3 blockSize(16, 2);
 
-                uint16_to_nv12<<<gridSize, blockSize>>>((uint8_t*) (copyToDevice ? this->deviceBuffer : src), srcPitch, (uint8_t*) f->inputPtr, f->pitch, width, height);
+                uint16_to_nv12 << <gridSize, blockSize >> > ((uint8_t*)(copyToDevice ? this->deviceBuffer : src), srcPitch, (uint8_t*)f->inputPtr, f->pitch, width, height);
             }
             else if (this->format == NVPIPE_UINT32)
             {
@@ -557,7 +597,7 @@ public:
                 dim3 gridSize(width / 16 + 1, height / 2 + 1);
                 dim3 blockSize(16, 2);
 
-                uint32_to_nv12<<<gridSize, blockSize>>>((uint8_t*) (copyToDevice ? this->deviceBuffer : src), srcPitch, (uint8_t*) f->inputPtr, f->pitch, width, height);
+                uint32_to_nv12 << <gridSize, blockSize >> > ((uint8_t*)(copyToDevice ? this->deviceBuffer : src), srcPitch, (uint8_t*)f->inputPtr, f->pitch, width, height);
             }
         }
 
@@ -569,7 +609,7 @@ public:
 
     uint64_t encodeTexture(uint32_t texture, uint32_t target, uint8_t* dst, uint64_t dstSize, uint32_t width, uint32_t height, bool forceIFrame)
     {
-        if (this->format != NVPIPE_BGRA32)
+        if (this->format != NVPIPE_RGBA32)
             throw Exception("The OpenGL interface only supports the BGRA32 format");
 
         // Recreate encoder if size changed
@@ -578,45 +618,45 @@ public:
         // Map texture and copy input to encoder
         cudaGraphicsResource_t resource = this->registry.getTextureGraphicsResource(texture, target, width, height, cudaGraphicsRegisterFlagsReadOnly);
         CUDA_THROW(cudaGraphicsMapResources(1, &resource),
-                   "Failed to map texture graphics resource");
+            "Failed to map texture graphics resource");
         cudaArray_t array;
         CUDA_THROW(cudaGraphicsSubResourceGetMappedArray(&array, resource, 0, 0),
-                   "Failed get texture graphics resource array");
+            "Failed get texture graphics resource array");
 
         const NvEncInputFrame* f = this->encoder->GetNextInputFrame();
         CUDA_THROW(cudaMemcpy2DFromArray(f->inputPtr, f->pitch, array, 0, 0, width * 4, height, cudaMemcpyDeviceToDevice),
-                   "Failed to copy from texture array");
+            "Failed to copy from texture array");
 
         // Encode
         uint64_t size = this->encode(dst, dstSize, forceIFrame);
 
         // Unmap texture
         CUDA_THROW(cudaGraphicsUnmapResources(1, &resource),
-                   "Failed to unmap texture graphics resource");
+            "Failed to unmap texture graphics resource");
 
         return size;
     }
 
     uint64_t encodePBO(uint32_t pbo, uint8_t* dst, uint64_t dstSize, uint32_t width, uint32_t height, bool forceIFrame)
     {
-        if (this->format != NVPIPE_BGRA32)
+        if (this->format != NVPIPE_RGBA32)
             throw Exception("The OpenGL interface only supports the BGRA32 format");
 
         // Map PBO and copy input to encoder
         cudaGraphicsResource_t resource = this->registry.getPBOGraphicsResource(pbo, width, height, cudaGraphicsRegisterFlagsReadOnly);
         CUDA_THROW(cudaGraphicsMapResources(1, &resource),
-                   "Failed to map PBO graphics resource");
+            "Failed to map PBO graphics resource");
         void* pboPointer;
         size_t pboSize;
         CUDA_THROW(cudaGraphicsResourceGetMappedPointer(&pboPointer, &pboSize, resource),
-                   "Failed to get mapped PBO pointer");
+            "Failed to get mapped PBO pointer");
 
         // Encode
         uint64_t size = this->encode(pboPointer, width * 4, dst, dstSize, width, height, forceIFrame);
 
         // Unmap PBO
         CUDA_THROW(cudaGraphicsUnmapResources(1, &resource),
-                   "Failed to unmap PBO graphics resource");
+            "Failed to unmap PBO graphics resource");
 
         return size;
     }
@@ -664,23 +704,34 @@ public:
 private:
     void recreate(uint32_t width, uint32_t height)
     {
+        std::lock_guard<std::mutex> lock(Encoder::mutex);
+
         // Only recreate if necessary
         if (width == this->width && height == this->height)
-            return;
+            return;        
 
         this->width = width;
         this->height = height;
 
         // Ensure we have a CUDA context
         CUDA_THROW(cudaDeviceSynchronize(),
-                   "Failed to synchronize device");
+            "Failed to synchronize device");
         CUcontext cudaContext;
-        cuCtxGetCurrent(&cudaContext);
+        cuCtxGetCurrent(&cudaContext);        
 
         // Create encoder
         try
         {
-            NV_ENC_BUFFER_FORMAT bufferFormat = (this->format == NVPIPE_BGRA32) ? NV_ENC_BUFFER_FORMAT_ARGB : NV_ENC_BUFFER_FORMAT_NV12;
+            // Destroy previous encoder
+            if (this->encoder)
+            {
+                std::vector<std::vector<uint8_t>> tmp;
+                this->encoder->EndEncode(tmp);
+                this->encoder->DestroyEncoder();
+                this->encoder.reset();
+            }
+
+            NV_ENC_BUFFER_FORMAT bufferFormat = (this->format == NVPIPE_RGBA32) ? NV_ENC_BUFFER_FORMAT_ABGR : NV_ENC_BUFFER_FORMAT_NV12;
             this->encoder = std::unique_ptr<NvEncoderCuda>(new NvEncoderCuda(cudaContext, width, height, bufferFormat, 0));
 
             NV_ENC_INITIALIZE_PARAMS initializeParams = { NV_ENC_INITIALIZE_PARAMS_VER };
@@ -722,7 +773,7 @@ private:
         }
         catch (NVENCException& e)
         {
-            throw Exception("Failed to create encoder (" + e.getErrorString() + ")");
+            throw Exception("Failed to create encoder (" + e.getErrorString() + ", error " + std::to_string(e.getErrorCode()) + " = " + EncErrorCodeToString(e.getErrorCode()) + ")");
         }
     }
 
@@ -746,7 +797,7 @@ private:
         }
         catch (NVENCException& e)
         {
-            throw Exception("Encode failed (" + e.getErrorString() + ")");
+            throw Exception("Encode failed (" + e.getErrorString() + ", error " + std::to_string(e.getErrorCode()) + " = " + EncErrorCodeToString(e.getErrorCode()) + ")");
         }
 
         // Copy output
@@ -779,7 +830,7 @@ private:
 
             this->deviceBufferSize = requiredSize;
             CUDA_THROW(cudaMalloc(&this->deviceBuffer, this->deviceBufferSize),
-                       "Failed to allocate temporary device memory");
+                "Failed to allocate temporary device memory");
         }
     }
 
@@ -797,24 +848,43 @@ private:
     void* deviceBuffer = nullptr;
     uint64_t deviceBufferSize = 0;
 
+    static std::mutex mutex;
+
+#ifdef NVPIPE_WITH_OPENGL
     GraphicsResourceRegistry registry;
+#endif
 };
+
+std::mutex Encoder::mutex;
+
 #endif
 
 
 #ifdef NVPIPE_WITH_DECODER
+
+inline std::string DecErrorCodeToString(CUresult code)
+{
+    const char* str = nullptr;
+    cuGetErrorName(code, &str);
+
+    if (str)
+        return std::string(str);
+
+    return "Unknown error code";
+}
+
 /**
  * @brief Decoder implementation.
  */
 class Decoder
 {
 public:
-    Decoder(NvPipe_Format format, NvPipe_Codec codec)
+    Decoder(NvPipe_Format format, NvPipe_Codec codec, uint32_t width, uint32_t height)
     {
         this->format = format;
         this->codec = codec;
 
-        this->recreate(1920, 1080);
+        this->recreate(width, height);
     }
 
     ~Decoder()
@@ -845,11 +915,11 @@ public:
                 this->recreateDeviceBuffer(width, height);
 
             // Convert to output format
-            uint8_t* dstDevice = (uint8_t*) (copyToHost ? this->deviceBuffer : dst);
+            uint8_t* dstDevice = (uint8_t*)(copyToHost ? this->deviceBuffer : dst);
 
-            if (this->format == NVPIPE_BGRA32)
+            if (this->format == NVPIPE_RGBA32)
             {
-                Nv12ToBgra32(decoded, width, dstDevice, width * 4, width, height);
+                Nv12ToColor32<RGBA32>(decoded, width, dstDevice, width * 4, width, height);
             }
             else if (this->format == NVPIPE_UINT4)
             {
@@ -857,7 +927,7 @@ public:
                 dim3 gridSize(width / 16 / 2 + 1, height / 2 + 1);
                 dim3 blockSize(16, 2);
 
-                nv12_to_uint4<<<gridSize, blockSize>>>(decoded, this->decoder->GetDeviceFramePitch(), dstDevice, width / 2, width, height);
+                nv12_to_uint4 << <gridSize, blockSize >> > (decoded, this->decoder->GetDeviceFramePitch(), dstDevice, width / 2, width, height);
             }
             else if (this->format == NVPIPE_UINT8)
             {
@@ -865,7 +935,7 @@ public:
                 dim3 gridSize(width / 16 + 1, height / 2 + 1);
                 dim3 blockSize(16, 2);
 
-                nv12_to_uint8<<<gridSize, blockSize>>>(decoded, this->decoder->GetDeviceFramePitch(), dstDevice, width, width, height);
+                nv12_to_uint8 << <gridSize, blockSize >> > (decoded, this->decoder->GetDeviceFramePitch(), dstDevice, width, width, height);
             }
             else if (this->format == NVPIPE_UINT16)
             {
@@ -873,7 +943,7 @@ public:
                 dim3 gridSize(width / 16 + 1, height / 2 + 1);
                 dim3 blockSize(16, 2);
 
-                nv12_to_uint16<<<gridSize, blockSize>>>(decoded, this->decoder->GetDeviceFramePitch(), dstDevice, width * 2, width, height);
+                nv12_to_uint16 << <gridSize, blockSize >> > (decoded, this->decoder->GetDeviceFramePitch(), dstDevice, width * 2, width, height);
             }
             else if (this->format == NVPIPE_UINT32)
             {
@@ -881,13 +951,13 @@ public:
                 dim3 gridSize(width / 16 + 1, height / 2 + 1);
                 dim3 blockSize(16, 2);
 
-                nv12_to_uint32<<<gridSize, blockSize>>>(decoded, this->decoder->GetDeviceFramePitch(), dstDevice, width * 4, width, height);
+                nv12_to_uint32 << <gridSize, blockSize >> > (decoded, this->decoder->GetDeviceFramePitch(), dstDevice, width * 4, width, height);
             }
 
             // Copy to host if necessary
             if (copyToHost)
                 CUDA_THROW(cudaMemcpy(dst, this->deviceBuffer, getFrameSize(this->format, width, height), cudaMemcpyDeviceToHost),
-                           "Failed to copy output to host memory");
+                    "Failed to copy output to host memory");
 
             return getFrameSize(this->format, width, height);
         }
@@ -899,7 +969,7 @@ public:
 
     uint64_t decodeTexture(const uint8_t* src, uint64_t srcSize, uint32_t texture, uint32_t target, uint32_t width, uint32_t height)
     {
-        if (this->format != NVPIPE_BGRA32)
+        if (this->format != NVPIPE_RGBA32)
             throw Exception("The OpenGL interface only supports the BGRA32 format");
 
         // Recreate decoder if size changed
@@ -912,19 +982,19 @@ public:
         {
             // Convert to RGBA
             this->recreateDeviceBuffer(width, height);
-            Nv12ToBgra32(decoded, width, (uint8_t*) this->deviceBuffer, width * 4, width, height);
+            Nv12ToColor32<RGBA32>(decoded, width, (uint8_t*)this->deviceBuffer, width * 4, width, height);
 
             // Copy output to texture
             cudaGraphicsResource_t resource = this->registry.getTextureGraphicsResource(texture, target, width, height, cudaGraphicsRegisterFlagsWriteDiscard);
             CUDA_THROW(cudaGraphicsMapResources(1, &resource),
-                       "Failed to map texture graphics resource");
+                "Failed to map texture graphics resource");
             cudaArray_t array;
             CUDA_THROW(cudaGraphicsSubResourceGetMappedArray(&array, resource, 0, 0),
-                       "Failed get texture graphics resource array");
+                "Failed get texture graphics resource array");
             CUDA_THROW(cudaMemcpy2DToArray(array, 0, 0, this->deviceBuffer, width * 4, width * 4, height, cudaMemcpyDeviceToDevice),
-                       "Failed to copy to texture array");
+                "Failed to copy to texture array");
             CUDA_THROW(cudaGraphicsUnmapResources(1, &resource),
-                       "Failed to unmap texture graphics resource");
+                "Failed to unmap texture graphics resource");
 
             return width * height * 4;
         }
@@ -934,24 +1004,24 @@ public:
 
     uint64_t decodePBO(const uint8_t* src, uint64_t srcSize, uint32_t pbo, uint32_t width, uint32_t height)
     {
-        if (this->format != NVPIPE_BGRA32)
+        if (this->format != NVPIPE_RGBA32)
             throw Exception("The OpenGL interface only supports the BGRA32 format");
 
         // Map PBO for output
         cudaGraphicsResource_t resource = this->registry.getPBOGraphicsResource(pbo, width, height, cudaGraphicsRegisterFlagsWriteDiscard);
         CUDA_THROW(cudaGraphicsMapResources(1, &resource),
-                   "Failed to map PBO graphics resource");
+            "Failed to map PBO graphics resource");
         void* pboPointer;
         size_t pboSize;
         CUDA_THROW(cudaGraphicsResourceGetMappedPointer(&pboPointer, &pboSize, resource),
-                   "Failed to get mapped PBO pointer");
+            "Failed to get mapped PBO pointer");
 
         // Decode
         uint64_t size = this->decode(src, srcSize, pboPointer, width, height);
 
         // Unmap PBO
         CUDA_THROW(cudaGraphicsUnmapResources(1, &resource),
-                   "Failed to unmap PBO graphics resource");
+            "Failed to unmap PBO graphics resource");
 
         return size;
     }
@@ -961,6 +1031,8 @@ public:
 private:
     void recreate(uint32_t width, uint32_t height)
     {
+        std::lock_guard<std::mutex> lock(Decoder::mutex);
+
         // Only recreate if necessary
         if (width == this->width && height == this->height)
             return;
@@ -970,18 +1042,24 @@ private:
 
         // Ensure we have a CUDA context
         CUDA_THROW(cudaDeviceSynchronize(),
-                   "Failed to synchronize device");
+            "Failed to synchronize device");
         CUcontext cudaContext;
         cuCtxGetCurrent(&cudaContext);
 
         // Create decoder
         try
         {
-            this->decoder = std::unique_ptr<NvDecoder>(new NvDecoder(cudaContext, width, height, true, (this->codec == NVPIPE_HEVC) ? cudaVideoCodec_HEVC : cudaVideoCodec_H264, nullptr, true));
+            // Destroy previous decoder
+            if (this->decoder)
+            {
+                this->decoder.reset();
+            }
+
+            this->decoder = std::unique_ptr<NvDecoder>(new NvDecoder(cudaContext, width, height, true, (this->codec == NVPIPE_HEVC) ? cudaVideoCodec_HEVC : cudaVideoCodec_H264,/* &Decoder::mutex*/ nullptr, true));
         }
         catch (NVDECException& e)
         {
-            throw Exception("Failed to create decoder (" + e.getErrorString() + ")");
+            throw Exception("Failed to create decoder (" + e.getErrorString() + ", error " + std::to_string(e.getErrorCode()) + " = " + DecErrorCodeToString(e.getErrorCode()) + ")");
         }
     }
 
@@ -1000,7 +1078,7 @@ private:
         }
         catch (NVDECException& e)
         {
-            throw Exception("Decode failed (" + e.getErrorString() + ")");
+            throw Exception("Decode failed (" + e.getErrorString() + ", error " + std::to_string(e.getErrorCode()) + " = " + DecErrorCodeToString(e.getErrorCode()) + ")");
         }
 
         if (numFramesDecoded <= 0)
@@ -1023,7 +1101,7 @@ private:
 
             this->deviceBufferSize = requiredSize;
             CUDA_THROW(cudaMalloc(&this->deviceBuffer, this->deviceBufferSize),
-                       "Failed to allocate temporary device memory");
+                "Failed to allocate temporary device memory");
         }
     }
 
@@ -1039,10 +1117,14 @@ private:
     void* deviceBuffer = nullptr;
     uint64_t deviceBufferSize = 0;
 
+    static std::mutex mutex;
+
 #ifdef NVPIPE_WITH_OPENGL
     GraphicsResourceRegistry registry;
 #endif
 };
+
+std::mutex Decoder::mutex;
 
 #endif
 
@@ -1072,13 +1154,13 @@ std::string sharedError; // shared error code for create functions (NOT threadsa
 
 #ifdef NVPIPE_WITH_ENCODER
 
-NVPIPE_EXPORT NvPipe* NvPipe_CreateEncoder(NvPipe_Format format, NvPipe_Codec codec, NvPipe_Compression compression, uint64_t bitrate, uint32_t targetFrameRate)
+NVPIPE_EXPORT NvPipe* NvPipe_CreateEncoder(NvPipe_Format format, NvPipe_Codec codec, NvPipe_Compression compression, uint64_t bitrate, uint32_t targetFrameRate, uint32_t width, uint32_t height)
 {
     Instance* instance = new Instance();
 
     try
     {
-        instance->encoder = std::unique_ptr<Encoder>(new Encoder(format, codec, compression, bitrate, targetFrameRate));
+        instance->encoder = std::unique_ptr<Encoder>(new Encoder(format, codec, compression, bitrate, targetFrameRate, width, height));
     }
     catch (Exception& e)
     {
@@ -1177,13 +1259,13 @@ NVPIPE_EXPORT uint64_t NvPipe_EncodePBO(NvPipe* nvp, uint32_t pbo, uint8_t* dst,
 
 #ifdef NVPIPE_WITH_DECODER
 
-NVPIPE_EXPORT NvPipe* NvPipe_CreateDecoder(NvPipe_Format format, NvPipe_Codec codec)
+NVPIPE_EXPORT NvPipe* NvPipe_CreateDecoder(NvPipe_Format format, NvPipe_Codec codec, uint32_t width, uint32_t height)
 {
     Instance* instance = new Instance();
 
     try
     {
-        instance->decoder = std::unique_ptr<Decoder>(new Decoder(format, codec));
+        instance->decoder = std::unique_ptr<Decoder>(new Decoder(format, codec, width, height));
     }
     catch (Exception& e)
     {
