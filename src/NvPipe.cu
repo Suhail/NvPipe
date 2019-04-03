@@ -506,6 +506,15 @@ public:
 
     ~Encoder()
     {
+      // Destroy encoder
+      if (this->encoder)
+      {
+        std::vector<std::vector<uint8_t>> tmp;
+        this->encoder->EndEncode(tmp);
+        this->encoder->DestroyEncoder();
+        this->encoder.reset();
+      }
+
         // Free temporary device memory
         if (this->deviceBuffer)
             cudaFree(this->deviceBuffer);
